@@ -16,11 +16,23 @@ from app.sql_generator import router as generation_router
 from app.agent import router as agent_router
 
 settings = get_settings()
-allowed_origins = list(
-    dict.fromkeys(
-        [settings.frontend_origin, "http://localhost:5173", "http://127.0.0.1:5173"]
+
+
+def configure_cors(app: FastAPI, frontend_origin: str) -> None:
+    """Configure exact frontend origins, normalizing an optional trailing slash."""
+    configured_origin = frontend_origin.strip().rstrip("/")
+    allowed_origins = list(
+        dict.fromkeys(
+            [configured_origin, "http://localhost:5173", "http://127.0.0.1:5173"]
+        )
     )
-)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
 
 app = FastAPI(title=settings.app_name)
 app.include_router(connections_router)
@@ -28,13 +40,7 @@ app.include_router(schema_router)
 app.include_router(query_router)
 app.include_router(generation_router)
 app.include_router(agent_router)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
-)
+configure_cors(app, settings.frontend_origin)
 
 
 @app.exception_handler(RequestValidationError)
