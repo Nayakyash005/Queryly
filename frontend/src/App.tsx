@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import type { Session } from "@supabase/supabase-js";
 import { AuthForm } from "./components/AuthForm";
@@ -22,25 +22,96 @@ function LandingPage() {
   </div>;
 }
 
-function AuthCallback() {
-  const navigate = useNavigate();
-  const [message, setMessage] = useState("Confirming your sign-in…");
-  useEffect(() => {
-    let active = true;
-    if (!supabase) { setMessage("Authentication is not configured."); return; }
-    supabase.auth.getSession().then(({ data, error }) => {
-      if (!active) return;
-      if (error || !data.session) setMessage(error?.message || "This sign-in link is invalid or has expired.");
-      else navigate("/app", { replace: true });
-    });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) navigate("/app", { replace: true });
-    });
-    return () => { active = false; listener.subscription.unsubscribe(); };
-  }, [navigate]);
-  return <main className="callback-page"><div className="callback-card"><Brand /><span className="spinner callback-spinner" /><h1>{message}</h1><p>If this takes too long, return to sign in and try again.</p><Link to="/login">Go to sign in</Link></div></main>;
+function getInternalDestination(value: string | null): string {
+  if (!value || !value.startsWith("/") || value.startsWith("//") || value.startsWith("/\\")) {
+    return "/app";
+  }
+
+  try {
+    const destination = new URL(value, window.location.origin);
+    if (destination.origin !== window.location.origin) return "/app";
+    return `${destination.pathname}${destination.search}${destination.hash}`;
+  } catch {
+    return "/app";
+  }
 }
 
+function AuthCallback() {
+  const navigate = useNavigate();
+  const [message, setMessage] = useState("Confirming your sign-in...");
+  const [error, setError] = useState("");
+  const callbackResult = useRef<Promise<{ destination: string; error: string }> | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    if (!callbackResult.current) {
+      callbackResult.current = (async () => {
+        const callbackUrl = new URL(window.location.href);
+        const destination = getInternalDestination(callbackUrl.searchParams.get("next"));
+        const code = callbackUrl.searchParams.get("code");
+        const providerError = callbackUrl.searchParams.get("error_description")
+          || callbackUrl.searchParams.get("error");
+
+        if (providerError) {
+          window.history.replaceState({}, document.title, callbackUrl.pathname);
+          return {
+            destination,
+            error: "Google sign-in could not be completed. Return to sign in and try again.",
+          };
+        }
+
+        if (!supabase) {
+          return { destination, error: "Authentication is not configured for this application." };
+        }
+
+        try {
+          // Supabase normally exchanges the PKCE code during initialization;
+          // getSession waits for that initialization to finish.
+          const current = await supabase.auth.getSession();
+          let session = current.data.session;
+          let authError = current.error;
+
+          // Fallback for clients that did not consume the URL code automatically.
+          if (!session && code) {
+            const exchanged = await supabase.auth.exchangeCodeForSession(code);
+            session = exchanged.data.session;
+            authError = exchanged.error;
+          }
+
+          window.history.replaceState({}, document.title, callbackUrl.pathname);
+          if (session) return { destination, error: "" };
+          return {
+            destination,
+            error: authError?.message || "This sign-in link is invalid or has expired. Please try again.",
+          };
+        } catch (caught) {
+          window.history.replaceState({}, document.title, callbackUrl.pathname);
+          return {
+            destination,
+            error: caught instanceof Error
+              ? caught.message
+              : "Sign-in could not be completed. Please try again.",
+          };
+        }
+      })();
+    }
+
+    callbackResult.current.then((result) => {
+      if (!active) return;
+      if (result.error) {
+        setMessage("We could not complete your sign-in");
+        setError(result.error);
+      } else {
+        navigate(result.destination, { replace: true });
+      }
+    });
+
+    return () => { active = false; };
+  }, [navigate]);
+
+  return <main className="callback-page"><div className="callback-card"><Brand />{!error && <span className="spinner callback-spinner" />}<h1>{message}</h1>{error ? <p className="form-message error-message" role="alert">{error}</p> : <p>We are securely confirming your account.</p>}<Link to="/login">Return to sign in</Link></div></main>;
+}
 function Workspace() {
   const navigate = useNavigate();
   const signOut = async () => { await getSupabase().auth.signOut(); navigate("/", { replace: true }); };
