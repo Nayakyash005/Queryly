@@ -33,3 +33,5 @@
 @media(prefers-reduced-motion:reduce){.agent-stage,.stage-marker,.status-active .stage-marker{animation:none;transition:none}}
 .database-options{grid-template-columns:repeat(3,minmax(0,1fr))}.mysql-icon{background:#edf1f8;color:#526d9c}
 @media(max-width:620px){.database-options{grid-template-columns:1fr}}
+
+.results-export-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;padding-top:12px;border-top:1px solid #eff1ed}.results-export-footer>span{color:#89928b;font-size:9px;line-height:1.5}.results-export-footer .secondary-workspace-button{flex:none}@media(max-width:620px){.results-export-footer{align-items:stretch;flex-direction:column}.results-export-footer .secondary-workspace-button{width:100%}}
