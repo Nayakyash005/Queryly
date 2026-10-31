@@ -5,7 +5,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from groq import Groq
+from groq import APIStatusError, Groq
 from pydantic import ValidationError
 
 from app.auth import get_current_user
@@ -100,9 +100,18 @@ def generate_sql(
             temperature=0,
             max_tokens=MAX_RESPONSE_TOKENS,
         )
+    except APIStatusError as exc:
+        logger.warning(
+            "Groq SQL generation failed: status=%s, request_id=%s",
+            exc.status_code,
+            getattr(exc, "request_id", None),
+        )
+        raise SQLGenerationError("The SQL generation service is temporarily unavailable.") from None
     except Exception as exc:
-        # SDK exceptions may include request details; never log their message.
-        logger.warning("Groq SQL generation request failed (%s).", type(exc).__name__)
+        logger.warning(
+            "Groq SQL generation failed: error_type=%s",
+            type(exc).__name__,
+        )
         raise SQLGenerationError("The SQL generation service is temporarily unavailable.") from None
 
     try:
@@ -182,8 +191,18 @@ def repair_sql(
             temperature=0,
             max_tokens=MAX_RESPONSE_TOKENS,
         )
+    except APIStatusError as exc:
+        logger.warning(
+            "Groq SQL repair failed: status=%s, request_id=%s",
+            exc.status_code,
+            getattr(exc, "request_id", None),
+        )
+        raise SQLGenerationError("The SQL generation service is temporarily unavailable.") from None
     except Exception as exc:
-        logger.warning("Groq SQL repair request failed (%s).", type(exc).__name__)
+        logger.warning(
+            "Groq SQL repair failed: error_type=%s",
+            type(exc).__name__,
+        )
         raise SQLGenerationError("The SQL generation service is temporarily unavailable.") from None
 
     try:
