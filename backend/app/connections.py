@@ -93,9 +93,13 @@ def _resolve_public_host(host: str, port: int, database_type: str = "PostgreSQL"
             f"{database_type} connections to private, local, or reserved network addresses are blocked."
         )
 
-    # Pin the resolved address in connect_args to reduce DNS-rebinding risk while
+    # Pin a resolved address in connect_args to reduce DNS-rebinding risk while
     # preserving the hostname in the URL for TLS certificate verification.
-    return str(addresses[0])
+    # Prefer IPv4 when a hostname has both address families: some hosting
+    # environments cannot route outbound IPv6 even when DNS advertises AAAA.
+    # Keep IPv6 as a fallback for IPv6-only public hosts.
+    ipv4_addresses = [address for address in addresses if address.version == 4]
+    return str((ipv4_addresses or addresses)[0])
 
 
 def _sqlite_engine(database: str | None) -> Engine:
